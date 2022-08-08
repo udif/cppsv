@@ -44,112 +44,114 @@ static int usage(const char* progname) {
   return 1;
 }
 
-int main(int argc, char** argv) {
-  std::string uhdmFile;
-  bool printLineInfo = false;
-  // Simple option parsing that works on all platforms.
-  for (int i = 1; i < argc; ++i) {
-    const std::string arg = argv[i];
-    if (arg == "--line") {
-      printLineInfo = true;
-    } else if (uhdmFile.empty())
-      uhdmFile = arg;
-    else
-      return usage(argv[0]);
-  }
+std::string inst_visit(vpiHandle obj_h, std::string path, bool printLineInfo) {
+    std::string res;
+    std::string objectName;
+    std::string defName;
+    std::string fileName;
 
-  if (uhdmFile.empty()) {
-    return usage(argv[0]);
-  }
-
-  struct stat buffer;
-  if (stat(uhdmFile.c_str(), &buffer) != 0) {
-    std::cerr << uhdmFile << ": File does not exist!" << std::endl;
-    return usage(argv[0]);
-  }
-
-  Serializer serializer;
-  std::vector<vpiHandle> restoredDesigns = serializer.Restore(uhdmFile);
-
-  if (restoredDesigns.empty()) {
-    std::cerr << uhdmFile << ": empty design." << std::endl;
-    return 1;
-  }
-  std::string result;
-  for (vpiHandle design : restoredDesigns) {
-    if (vpi_get(vpiType, design) == vpiDesign) {
-      result +=
-          "Design name: " + std::string(vpi_get_str(vpiName, design)) + "\n";
-      result += "Instance tree:\n";
-      std::cout << result;
-      vpiHandle instItr = vpi_iterate(UHDM::uhdmtopModules, design);
-      while (vpiHandle obj_h = vpi_scan(instItr)) {
-        std::function<std::string(vpiHandle, std::string)> inst_visit =
-            [&inst_visit, printLineInfo](vpiHandle obj_h, std::string path) {
-              std::string res;
-              std::string objectName;
-              std::string defName;
-              std::string fileName;
-              if (const char* s = vpi_get_str(vpiName, obj_h)) {
-                objectName = s;
-              }
-              if (const char* s = vpi_get_str(vpiDefName, obj_h)) {
-                defName = s;
-              }
-              if (const char* s = vpi_get_str(vpiFile, obj_h)) {
-                fileName = s;
-              }
-              if (objectName.size()) {
-                std::string lineInfo =
-                    printLineInfo
-                        ? std::string(
-                              " (" + defName + " " + fileName + ":" +
-                              std::to_string(vpi_get(vpiLineNo, obj_h)) + ":)")
-                        : "";
-                std::string res = path + objectName + lineInfo + "\n";
-                std::cout << res;
-                path += objectName + ".";
-              }
-              // Recursive tree traversal
-              if (vpi_get(vpiType, obj_h) == vpiModule ||
-                  vpi_get(vpiType, obj_h) == vpiGenScope) {
-                vpiHandle subItr = vpi_iterate(vpiModule, obj_h);
-                while (vpiHandle sub_h = vpi_scan(subItr)) {
-                  res += inst_visit(sub_h, path);
-                  vpi_release_handle(sub_h);
-                }
-                vpi_release_handle(subItr);
-                subItr = vpi_iterate(vpiInterface, obj_h);
-                while (vpiHandle sub_h = vpi_scan(subItr)) {
-                  res += inst_visit(sub_h, path);
-                  vpi_release_handle(sub_h);
-                }
-                vpi_release_handle(subItr);
-              }
-              if (vpi_get(vpiType, obj_h) == vpiModule ||
-                  vpi_get(vpiType, obj_h) == vpiGenScope) {
-                vpiHandle subItr = vpi_iterate(vpiGenScopeArray, obj_h);
-                while (vpiHandle sub_h = vpi_scan(subItr)) {
-                  res += inst_visit(sub_h, path);
-                  vpi_release_handle(sub_h);
-                }
-                vpi_release_handle(subItr);
-              }
-              if (vpi_get(vpiType, obj_h) == vpiGenScopeArray) {
-                vpiHandle subItr = vpi_iterate(vpiGenScope, obj_h);
-                while (vpiHandle sub_h = vpi_scan(subItr)) {
-                  res += inst_visit(sub_h, path);
-                  vpi_release_handle(sub_h);
-                }
-                vpi_release_handle(subItr);
-              }
-              return res;
-            };
-        result += inst_visit(obj_h, "");
-        vpi_release_handle(obj_h);
-      }
-      vpi_release_handle(instItr);
+    if (const char* s = vpi_get_str(vpiName, obj_h)) {
+      objectName = s;
     }
-  }
-  return 0;
-};
+    if (const char* s = vpi_get_str(vpiDefName, obj_h)) {
+      defName = s;
+    }
+    if (const char* s = vpi_get_str(vpiFile, obj_h)) {
+      fileName = s;
+    }
+    if (objectName.size()) {
+        std::string lineInfo =
+            printLineInfo
+                ? std::string(
+                      " (" + defName + " " + fileName + ":" +
+                      std::to_string(vpi_get(vpiLineNo, obj_h)) + ":)")
+                : "";
+        std::string res = path + objectName + lineInfo + "\n";
+        std::cout << res;
+        path += objectName + ".";
+    }
+    // Recursive tree traversal
+    if (vpi_get(vpiType, obj_h) == vpiModule || vpi_get(vpiType, obj_h) == vpiGenScope) {
+        vpiHandle subItr = vpi_iterate(vpiModule, obj_h);
+        while (vpiHandle sub_h = vpi_scan(subItr)) {
+            res += inst_visit(sub_h, path, printLineInfo);
+            vpi_release_handle(sub_h);
+        }
+        vpi_release_handle(subItr);
+        subItr = vpi_iterate(vpiInterface, obj_h);
+        while (vpiHandle sub_h = vpi_scan(subItr)) {
+            res += inst_visit(sub_h, path, printLineInfo);
+            vpi_release_handle(sub_h);
+        }
+        vpi_release_handle(subItr);
+    }
+    if (vpi_get(vpiType, obj_h) == vpiModule ||  vpi_get(vpiType, obj_h) == vpiGenScope) {
+        vpiHandle subItr = vpi_iterate(vpiGenScopeArray, obj_h);
+        while (vpiHandle sub_h = vpi_scan(subItr)) {
+            res += inst_visit(sub_h, path, printLineInfo);
+            vpi_release_handle(sub_h);
+        }
+        vpi_release_handle(subItr);
+    }
+    if (vpi_get(vpiType, obj_h) == vpiGenScopeArray) {
+        vpiHandle subItr = vpi_iterate(vpiGenScope, obj_h);
+        while (vpiHandle sub_h = vpi_scan(subItr)) {
+            res += inst_visit(sub_h, path, printLineInfo);
+            vpi_release_handle(sub_h);
+        }
+        vpi_release_handle(subItr);
+    }
+    return res;
+}
+
+int main(int argc, char** argv) {
+    std::string uhdmFile;
+    bool printLineInfo = false;
+
+    // Simple option parsing that works on all platforms.
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--line") {
+            printLineInfo = true;
+        } else if (uhdmFile.empty())
+            uhdmFile = arg;
+        else
+            return usage(argv[0]);
+    }
+
+    if (uhdmFile.empty()) {
+        return usage(argv[0]);
+    }
+
+    struct stat buffer;
+    if (stat(uhdmFile.c_str(), &buffer) != 0) {
+        std::cerr << uhdmFile << ": File does not exist!" << std::endl;
+        return usage(argv[0]);
+    }
+
+    Serializer serializer;
+    std::vector<vpiHandle> restoredDesigns = serializer.Restore(uhdmFile);
+
+    if (restoredDesigns.empty()) {
+        std::cerr << uhdmFile << ": empty design." << std::endl;
+        return 1;
+    }
+    std::string result;
+    for (vpiHandle design : restoredDesigns) {
+      if (vpi_get(vpiType, design) == vpiDesign) {
+          result +=
+              "Design name: " + std::string(vpi_get_str(vpiName, design)) + "\n";
+          result += "Instance tree:\n";
+          std::cout << result;
+          vpiHandle instItr = vpi_iterate(UHDM::uhdmtopModules, design);
+          while (vpiHandle obj_h = vpi_scan(instItr)) {
+              result += inst_visit(obj_h, "", printLineInfo);
+              vpi_release_handle(obj_h);
+          }
+          vpi_release_handle(instItr);
+      }
+    }
+    return 0;
+
+}
+
